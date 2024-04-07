@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+  <title>Note Taking App</title>
+  <style>
+    * {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #f0f0f5; /* Light, neutral background */
+  font-family: 'Roboto', sans-serif; 
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+header {
+  background-color: #00D8CA; /* Turquoise header */
+  color: #0A1F46; /* Dark blue text */ 
+  border-radius: 5px;
+  width: 100%;
+  padding: 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15); 
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 999;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ... (header h1, user-greeting styles) */
+
+#notes-container {
+  margin-top: 100px;
+  width: 80%; /* Limit container width */
+  max-width: 900px; /* Cap max width */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-gap: 20px; /* Increased gap */
+}
+
+.note-card {
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease; /* For hover effect */
+}
+
+.note-card:hover {
+  transform: translateY(-3px); /* Slight lift on hover */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); 
+}
+
+/* ... (note-title, textarea, timestamp styles) */
+
+
+#add-note-button { 
+  background-color: #0A1F46; /* Dark blue button */
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  position: fixed; 
+  bottom: 20px;
+  right: 20px; 
+}
+
+#add-note-button:hover {
+  background-color: #00112d; /* Slightly darker on hover */
+}
+
+/* ... (theme-switch, dark-theme styles) */
+/* ... (All your existing styles) */
+
+#addNoteDialog {
+  display: none; /* Hidden by default */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* Center the dialog */
+  background-color: #fff; 
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2); 
+  z-index: 1000; /* Ensure it's on top of the content */
+}
+
+#addNoteDialog[open] {
+  display: block; /* Make the dialog visible when 'open' */
+  color:#0A1F46;
+  background-color:#00D8CA
+}
+/*
+#addNoteDialog {
+  /* ... your existing styles */
+  resize: both; /* Allow resizing on both width and height */
+  cursor: se-resize; /* Change cursor to indicate resizing on hover */
+}
+*/
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Welcome, <span id="userGreeting"></span></h1>
+    <div class="note-info">
+      You have <span id="noteCount">0</span> notes and <span id="wordCount">0</span> words in this notes app.
+    </div>
+    <select id="authorSelect">
+      <option value="User 1">User 1</option>
+      <!-- Add more options for other authors if needed -->
+      <option value="custom">Custom</option>
+    </select>
+    <input type="text" id="customAuthorInput" placeholder="Enter custom author name" style="display: none;">
+    <button id="setCustomAuthorButton">is Author</button>
+    <button id="export-pdf-button">Export as PDF</button>
+  </header>
+
+  <div id="notes-container">
+    <!-- Notes will be displayed here -->
+  </div>
+
+  <button id="add-note-button">+</button>
+
+  <dialog id="addNoteDialog">
+    <form id="addNoteForm">
+      <label for="noteTitle">Title:</label><br>
+      <input type="text" id="noteTitle"><br>
+      <label for="noteContent">Content:</label><br>
+      <textarea id="noteContent"></textarea><br>
+      <button type="submit">Add</button>
+    </form>
+  </dialog>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initialize);
+
+    function initialize() {
+      const authorSelect = document.getElementById('authorSelect');
+      const customAuthorInput = document.getElementById('customAuthorInput');
+      const setCustomAuthorButton = document.getElementById('setCustomAuthorButton');
+      const addNoteButton = document.getElementById('add-note-button');
+      const addNoteDialog = document.getElementById('addNoteDialog');
+      const exportPdfButton = document.getElementById('export-pdf-button');
+
+      if (!authorSelect || !customAuthorInput || !setCustomAuthorButton || !addNoteButton || !addNoteDialog || !exportPdfButton) {
+        console.error('Error: One or more elements not found');
+        return;
+      }
+
+      authorSelect.addEventListener('change', changeAuthor);
+      setCustomAuthorButton.addEventListener('click', setCustomAuthor);
+      addNoteButton.addEventListener('click', () => {
+        addNoteDialog.showModal();
+        notify('Add Note', 'Click to add a new note');
+      });
+      addNoteDialog.addEventListener('close', clearAddNoteForm);
+      exportPdfButton.addEventListener('click', exportAsPdf);
+
+      const addNoteForm = document.getElementById('addNoteForm');
+      addNoteForm.addEventListener('submit', (event) => {
+        event.preventDefault(); // Prevent form submission
+        addNote();
+      });
+
+      loadUserInfo();
+      displayNotes();
+    }
+
+    const loadUserInfo = () => {
+      const currentAuthor = localStorage.getItem('currentAuthor') || 'User 1';
+      document.getElementById('userGreeting').innerText = currentAuthor;
+      document.getElementById('authorSelect').value = currentAuthor;
+      notify('User Info Loaded', 'User info loaded successfully');
+    };
+
+    const changeAuthor = () => {
+      const currentAuthor = document.getElementById('authorSelect').value;
+      customAuthorInput.style.display = currentAuthor === 'custom' ? 'inline' : 'none';
+      localStorage.setItem('currentAuthor', currentAuthor);
+      loadUserInfo();
+      displayNotes();
+      notify('Author Changed', `Author changed to ${currentAuthor}`);
+    };
+
+    const setCustomAuthor = () => {
+      const customAuthorName = customAuthorInput.value.trim();
+      if (customAuthorName) {
+        const authorSelect = document.getElementById('authorSelect');
+        authorSelect.appendChild(createOption(customAuthorName));
+        authorSelect.value = customAuthorName;
+        customAuthorInput.value = '';
+        localStorage.setItem('currentAuthor', customAuthorName);
+        loadUserInfo();
+        displayNotes();
+        notify('Custom Author Set', `Custom author set to ${customAuthorName}`);
+      }
+    };
+
+    const createOption = (value, text = value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      return option;
+    };
+
+    const displayNotes = () => {
+      const notesContainer = document.getElementById('notes-container');
+      notesContainer.innerHTML = '';
+      getNotesFromStorage().forEach((note, index) => {
+        notesContainer.appendChild(createNoteCard(note, index));
+      });
+      updateNoteInfo();
+    };
+
+    const getNotesFromStorage = () => JSON.parse(localStorage.getItem('notes')) || [];
+
+    const updateNotesStorage = () => {
+      const notes = Array.from(document.querySelectorAll('.note-card')).map(noteCard => ({
+        title: noteCard.querySelector('.note-title').innerText,
+        content: noteCard.querySelector('textarea').value,
+        author: noteCard.querySelector('.note-author').innerText.replace('Author: ', ''),
+        timestamp: noteCard.querySelector('.note-timestamp').innerText.replace('Created at: ', '')
+      }));
+      localStorage.setItem('notes', JSON.stringify(notes));
+      updateNoteInfo();
+    };
+
+    const updateNoteInfo = () => {
+      const notes = getNotesFromStorage();
+      const wordCount = notes.reduce((total, note) => total + (note.content.trim().split(/\s+/).length || 0), 0);
+      document.getElementById('noteCount').innerText = notes.length;
+      document.getElementById('wordCount').innerText = wordCount;
+    };
+
+    const clearAddNoteForm = () => {
+      document.getElementById('noteTitle').value = '';
+      document.getElementById('noteContent').value = '';
+    };
+
+    const addNote = () => {
+      const noteTitle = document.getElementById('noteTitle').value.trim();
+      const noteContent = document.getElementById('noteContent').value.trim();
+      const currentAuthor = document.getElementById('authorSelect').value;
+      if (noteTitle || noteContent) {
+        const timeStamp = new Date().toLocaleString();
+        const noteCard = createNoteCard({ title: noteTitle, content: noteContent, author: currentAuthor, timestamp: timeStamp });
+        document.getElementById('notes-container').appendChild(noteCard);
+        updateNotesStorage();
+        notify('Note Added', 'Note added successfully');
+        closeAddNoteDialog(); // Close the dialog after adding the note
+      }
+    };
+
+    const closeAddNoteDialog = () => {
+      const addNoteDialog = document.getElementById('addNoteDialog');
+      if (addNoteDialog) {
+        addNoteDialog.close();
+      }
+    };
+
+    const createNoteCard = (note, index) => {
+      const noteCard = document.createElement('div');
+      noteCard.className = 'note-card';
+
+      noteCard.appendChild(createElement('h2', 'note-title', note.title || 'Untitled'));
+      noteCard.appendChild(createElement('p', 'note-author', `Author: ${note.author || 'Unknown'}`));
+      noteCard.appendChild(createElement('p', 'note-timestamp', `Created at: ${note.timestamp || 'Unknown'}`));
+      noteCard.appendChild(createElement('textarea', '', note.content));
+
+      const deleteButton = createElement('button', '', 'Delete');
+      deleteButton.addEventListener('click', () => deleteNoteFromUI(noteCard, index));
+      noteCard.appendChild(deleteButton);
+
+      return noteCard;
+    };
+
+    const createElement = (type, className, textContent) => {
+      const element = document.createElement(type);
+      if (className) element.className = className;
+      if (textContent) element.innerText = textContent;
+      return element;
+    };
+
+    const deleteNoteFromUI = (noteCard, index) => {
+      document.getElementById('notes-container').removeChild(noteCard);
+      updateNotesStorage();
+      notify('Note Deleted', 'Note deleted successfully');
+    };
+
+    const notify = (title, message) => {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body: message });
+      } else if ('Notification' in window && Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification(title, { body: message });
+          }
+        });
+      }
+    };
+
+    const exportAsPdf = () => {
+      const notesContainer = document.getElementById('notes-container');
+      const notesHtml = notesContainer.innerHTML;
+
+      const pdf = new jsPDF();
+      pdf.html(notesHtml, {
+        callback: (pdf) => {
+          pdf.save('notes.pdf');
+        }
+      });
+    };
+
+  </script>
+</body>
+</html>
